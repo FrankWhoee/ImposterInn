@@ -113,7 +113,7 @@ func (e *Engine) Winner() *Player {
 
 func (e *Engine) AllHandsEmpty() bool {
 	for _,p := range e.GameState.Players {
-		if len(p.Cards) > 0 {
+		if p.IsAlive() && len(p.Cards) > 0 {
 			return false
 		} 
 	}

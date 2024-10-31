@@ -28,13 +28,13 @@ func (b *Bot) NextMove(turnHistory []Turn, numCardsLastPlayed int, hand []Card, 
 	}
 	
 	pOfTableCard := math.Pow((8 - float64(numTableCards))/15, float64(numCardsLastPlayed))
-	pOfChallenge := min(1, max(0, 1 - pOfTableCard - (1/float64(6-prevPlayerTriggers)) + floatN(-0.1,0.1)))
+	pOfChallenge := min(1, max(0, 1 - pOfTableCard - (1/float64(6-prevPlayerTriggers)) + floatN(-0.3,0.3)))
 	if len(turnHistory) > 0 && rand.Float64() < pOfChallenge {
 		return Turn{Action: Challenge}
 	} else {
 		cardsToPlay := []Card{}
-		if len(hand)-numTableCards > 0 && rand.Float32() > 0.5 {
-			numCardsToPlay := 1 + rand.Intn(len(hand)-numTableCards)
+		if (len(hand)-numTableCards > 0 && rand.Float32() > 0.5) || numTableCards <=0 {
+			numCardsToPlay := min(3, 1 + rand.Intn(len(hand)-numTableCards))
 			for _, c := range hand {
 				if numCardsToPlay <= 0 {
 					break
@@ -45,7 +45,7 @@ func (b *Bot) NextMove(turnHistory []Turn, numCardsLastPlayed int, hand []Card, 
 				}
 			}
 		} else {
-			numCardsToPlay := 1 + rand.Intn(numTableCards)
+			numCardsToPlay := min(3, 1 + rand.Intn(numTableCards))
 			for _, c := range hand {
 				if numCardsToPlay <= 0 {
 					break

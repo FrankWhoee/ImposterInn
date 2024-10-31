@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/FrankWhoee/ImposterInn/engine"
+	"github.com/fatih/color"
 )
 
-func processPlayResult(playResult engine.PlayResult) {
+func processPlayResult(playResult engine.PlayResult, g *engine.GameState) {
 	if playResult.TriggerPlayer != nil && playResult.E == nil {
 		fmt.Println("CARDS REVEALED:")
 		fmt.Println(engine.CardListToString(playResult.CardReveal))
@@ -22,31 +23,46 @@ func processPlayResult(playResult engine.PlayResult) {
 		}
 
 		fmt.Printf("Player %d pulled the trigger. They %s on trigger %d.\n", playResult.TriggerPlayer.Id, survival, playResult.TriggerPlayer.CurrentCartridge)
+		color.Red("------------ROUND RESET------------")
+		printStats(g)
+	}
+}
+
+func printStats(g *engine.GameState) {
+	for _, p := range g.Players {
+		if p.IsAlive() {
+			color.Green("[ALIVE] Player %d, %d triggers.", p.Id, p.CurrentCartridge)
+		} else {
+			color.Red("[DEAD]  Player %d", p.Id)
+		}
 	}
 }
 
 func main() {
 	e := engine.NewEngine()
-	bots := [3]engine.Bot{engine.Bot{Id: 1}, engine.Bot{Id: 2},engine.Bot{Id: 3}}
+	bots := [3]engine.Bot{engine.Bot{Id: 1}, engine.Bot{Id: 2}, engine.Bot{Id: 3}}
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("GAME START")
+	println("---------------------------------------------")
 	fmt.Println(e.GameState.TableCard.String() + "'s Table")
 	if e.GameState.CurrentPlayer != 0 {
+		fmt.Printf("PLAYER %d's TURN - %d triggers pulled\n", e.GameState.CurrentPlayer, e.GameState.Players[e.GameState.CurrentPlayer].CurrentCartridge)
 		CurrentPlayer := e.GameState.Players[e.GameState.CurrentPlayer]
 		PreviousPlayer := e.GameState.Players[e.GameState.PreviousPlayer]
-		t := bots[e.GameState.CurrentPlayer - 1].NextMove(e.GameState.TurnHistory, len(e.GameState.CardsLastPlayed), CurrentPlayer.Cards, e.GameState.TableCard, PreviousPlayer.CurrentCartridge)
+		t := bots[e.GameState.CurrentPlayer-1].NextMove(e.GameState.TurnHistory, len(e.GameState.CardsLastPlayed), CurrentPlayer.Cards, e.GameState.TableCard, PreviousPlayer.CurrentCartridge)
 		if t.Action == engine.Challenge {
 			fmt.Printf("Player %d challenges player %d.\n", CurrentPlayer.Id, PreviousPlayer.Id)
 			playResult := e.Play(t)
 			if playResult.E != nil {
 				fmt.Println(playResult.E.Error())
 			}
-			processPlayResult(playResult)
+			processPlayResult(playResult, e.GameState)
 		} else {
 			fmt.Printf("Player %d claims %d %ss.\n", CurrentPlayer.Id, len(t.Cards), e.GameState.TableCard.String())
 			playResult := e.Play(t)
-			processPlayResult(playResult)
+			processPlayResult(playResult, e.GameState)
 		}
+		println("---------------------------------------------")
 	}
 	for {
 		fmt.Printf("PLAYER %d's TURN - %d triggers pulled\n", e.GameState.CurrentPlayer, e.GameState.Players[e.GameState.CurrentPlayer].CurrentCartridge)
@@ -63,7 +79,7 @@ func main() {
 					fmt.Println(playResult.E.Error())
 					continue
 				}
-				processPlayResult(playResult)
+				processPlayResult(playResult, e.GameState)
 			} else {
 				cardStrings := strings.Split(strings.Trim(a, "\n "), " ")
 				playedCards := []engine.Card{}
@@ -85,11 +101,12 @@ func main() {
 					continue
 				}
 			}
-			
+
 		} else {
 			CurrentPlayer := e.GameState.Players[e.GameState.CurrentPlayer]
 			PreviousPlayer := e.GameState.Players[e.GameState.PreviousPlayer]
-			t := bots[e.GameState.CurrentPlayer - 1].NextMove(e.GameState.TurnHistory, len(e.GameState.CardsLastPlayed), CurrentPlayer.Cards, e.GameState.TableCard, PreviousPlayer.CurrentCartridge)
+			t := bots[e.GameState.CurrentPlayer-1].NextMove(e.GameState.TurnHistory, len(e.GameState.CardsLastPlayed), CurrentPlayer.Cards, e.GameState.TableCard, PreviousPlayer.CurrentCartridge)
+			time.Sleep(1 * time.Second)
 			if t.Action == engine.Challenge {
 				fmt.Printf("Player %d challenges player %d.\n", CurrentPlayer.Id, PreviousPlayer.Id)
 				playResult := e.Play(t)
@@ -97,23 +114,26 @@ func main() {
 					fmt.Println(playResult.E.Error())
 					continue
 				}
-				processPlayResult(playResult)
+				processPlayResult(playResult, e.GameState)
 			} else {
 				fmt.Printf("Player %d claims %d %ss.\n", CurrentPlayer.Id, len(t.Cards), e.GameState.TableCard.String())
 				playResult := e.Play(t)
-				processPlayResult(playResult)
+				processPlayResult(playResult, e.GameState)
 			}
-			time.Sleep(2 * time.Second)
 		}
-		
-		
-		if e.Winner() != nil {
-			fmt.Printf("--------------PLAYER %d WINS--------------\n", e.Winner().Id)
+
+		winner := e.Winner()
+		if winner != nil {
+			color.Green("------------------------------------------\n")
+			color.Green("|             PLAYER %d WINS             |\n", winner.Id)
+			color.Green("|               %d TRIGGERS              |\n", winner.CurrentCartridge)
+			color.Green("|           %d AWAY FROM DEATH           |\n", winner.LiveCartridge-winner.CurrentCartridge)
+			color.Green("------------------------------------------\n")
 			return
 		}
 		println("---------------------------------------------")
 		fmt.Println(e.GameState.TableCard.String() + "'s Table")
-		
+
 	}
 
 	if err := scanner.Err(); err != nil {
