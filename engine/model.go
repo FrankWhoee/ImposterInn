@@ -47,6 +47,7 @@ const (
 type Turn struct {
 	Action Action
 	Cards  []Card
+	PlayerId int
 }
 
 type Player struct {
@@ -66,10 +67,12 @@ type GameState struct {
 	CardsLastPlayed []Card
 	CurrentPlayer   int
 	PreviousPlayer  int
+	TurnHistory []Turn
 }
 
 func NewGameState() *GameState {
 	gameState := new(GameState)
+	gameState.TurnHistory = []Turn{}
 
 	for i := 0; i < 4; i++ {
 		gameState.Players = append(gameState.Players, new(Player))

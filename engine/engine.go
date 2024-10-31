@@ -53,6 +53,7 @@ func (e *Engine) ResetRound() {
 	g := e.GameState
 	g.TableCard = Card(rand.Intn(3))
 	g.CardsLastPlayed = []Card{}
+	g.TurnHistory = []Turn{}
 	deck := CreateOrderedDeck()
 	ShuffleDeck(deck)
 
@@ -82,7 +83,7 @@ func (e *Engine) nextPlayer() {
 	gameState := e.GameState
 	gameState.CurrentPlayer++
 	gameState.CurrentPlayer = gameState.CurrentPlayer % 4
-	for !gameState.Players[gameState.CurrentPlayer].IsAlive() {
+	for !gameState.Players[gameState.CurrentPlayer].IsAlive() && len(gameState.Players[gameState.CurrentPlayer].Cards) > 0 {
 		gameState.CurrentPlayer++
 		gameState.CurrentPlayer = gameState.CurrentPlayer % 4
 	}
@@ -93,18 +94,6 @@ type PlayResult struct {
 	CardReveal      []Card
 	TriggerPlayer   *Player
 	E               error
-}
-
-func (e *Engine) Triggers() []int {
-	t := []int{}
-	for _,p := range e.GameState.Players {
-		if p.IsAlive() {
-			t = append(t, p.CurrentCartridge)
-		} else {
-			t = append(t, -1)
-		}
-	}
-	return t
 }
 
 func (e *Engine) Winner() *Player {
@@ -120,6 +109,15 @@ func (e *Engine) Winner() *Player {
 		} 
 	}
 	return winner
+}
+
+func (e *Engine) AllHandsEmpty() bool {
+	for _,p := range e.GameState.Players {
+		if len(p.Cards) > 0 {
+			return false
+		} 
+	}
+	return true
 }
 
 func (e *Engine) Play(t Turn) PlayResult {
@@ -144,12 +142,16 @@ func (e *Engine) Play(t Turn) PlayResult {
 		if len(badCards) > 0 {
 			return PlayResult{false, nil, nil, errors.New("Played cards that didn't exist: " + CardListToString(badCards))}
 		}
-		e.GameState.NumCardsPlayed += len(t.Cards)
-		gameState.CardsLastPlayed = t.Cards
 		CurrentPlayer.Cards = newPlayerCards
-		gameState.PreviousPlayer = gameState.CurrentPlayer
-		e.nextPlayer()
-		return PlayResult{false, nil, nil, nil}
+		if e.AllHandsEmpty() {
+			return e.Play(Turn{Action: Challenge})
+		} else {
+			e.GameState.TurnHistory = append(e.GameState.TurnHistory, t)
+			gameState.CardsLastPlayed = t.Cards
+			gameState.PreviousPlayer = gameState.CurrentPlayer
+			e.nextPlayer()
+			return PlayResult{false, nil, nil, nil}
+		}
 	} else if t.Action == Challenge {
 		cardsLastPlayed := gameState.CardsLastPlayed
 		if len(gameState.CardsLastPlayed) <= 0 {
