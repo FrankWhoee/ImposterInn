@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	// "time"
+
+	"time"
 
 	"github.com/FrankWhoee/ImposterInn/engine"
 	"github.com/fatih/color"
@@ -71,11 +72,10 @@ func main() {
 			fmt.Println("YOUR CARDS:")
 			fmt.Println(engine.CardListToString(e.GameState.CurrentPlayer().Cards))
 			print("INPUT (Challenge/CARDS): ")
-			// scanner.Scan()
-			// a := scanner.Text()
-			a := e.GameState.CurrentPlayer().Cards[0].String()
+			scanner.Scan()
+			a := scanner.Text()
 			println(a)
-			
+
 			println("-----------------")
 			if strings.Trim(a, "\n ") == "Challenge" {
 				playResult := e.Play(engine.Turn{Action: engine.Challenge, Cards: []engine.Card{}})
@@ -110,7 +110,7 @@ func main() {
 			CurrentPlayer := e.GameState.CurrentPlayer()
 			PreviousPlayer := e.GameState.PreviousPlayer()
 			t := bots[e.GameState.CurrentPlayerId-1].NextMove(e.GameState.TurnHistory, len(e.GameState.CardsLastPlayed), CurrentPlayer.Cards, e.GameState.TableCard, PreviousPlayer.CurrentCartridge)
-			// time.Sleep(1 * time.Second)
+			time.Sleep(1 * time.Second)
 			if t.Action == engine.Challenge {
 				fmt.Printf("Player %d challenges player %d.\n", CurrentPlayer.Id, PreviousPlayer.Id)
 				playResult := e.Play(t)
@@ -138,9 +138,5 @@ func main() {
 		println("---------------------------------------------")
 		fmt.Println(e.GameState.TableCard.String() + "'s Table")
 
-	}
-
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "reading standard input:", err)
 	}
 }
