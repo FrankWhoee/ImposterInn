@@ -33,7 +33,7 @@ func (b *Bot) NextMove(turnHistory []Turn, numCardsLastPlayed int, hand []Card, 
 		return Turn{Action: Challenge}
 	} else {
 		cardsToPlay := []Card{}
-		if (len(hand)-numTableCards > 0 && rand.Float32() > 0.5) || numTableCards <=0 {
+		if ((len(hand)-numTableCards) > 0 && rand.Float32() > 0.5) || numTableCards <=0 {
 			numCardsToPlay := min(3, 1 + rand.Intn(len(hand)-numTableCards))
 			for _, c := range hand {
 				if numCardsToPlay <= 0 {

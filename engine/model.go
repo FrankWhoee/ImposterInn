@@ -36,7 +36,6 @@ func StringToCard(s string) (Card, error) {
 	return Card(i), nil
 }
 
-
 type Action int
 
 const (
@@ -45,8 +44,8 @@ const (
 )
 
 type Turn struct {
-	Action Action
-	Cards  []Card
+	Action   Action
+	Cards    []Card
 	PlayerId int
 }
 
@@ -65,9 +64,17 @@ type GameState struct {
 	Players         []*Player
 	TableCard       Card
 	CardsLastPlayed []Card
-	CurrentPlayer   int
-	PreviousPlayer  int
-	TurnHistory []Turn
+	CurrentPlayerId   int
+	PreviousPlayerId  int
+	TurnHistory     []Turn
+}
+
+func (g *GameState) CurrentPlayer() *Player{
+	return g.Players[g.CurrentPlayerId]
+}
+
+func (g *GameState) PreviousPlayer() *Player{
+	return g.Players[g.PreviousPlayerId]
 }
 
 func NewGameState() *GameState {

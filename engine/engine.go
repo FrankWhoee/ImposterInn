@@ -41,7 +41,6 @@ func ShuffleDeck(deck []Card) {
 	}
 }
 
-
 func NewEngine() *Engine {
 	e := new(Engine)
 	e.GameState = new(GameState)
@@ -70,7 +69,7 @@ func (e *Engine) ResetRound() {
 		}
 	}
 
-	g.CurrentPlayer = rand.Intn(int(len(g.Players)))
+	g.CurrentPlayerId = rand.Intn(int(len(g.Players)))
 	e.nextPlayer()
 }
 
@@ -80,95 +79,125 @@ func remove(s []Card, c Card) []Card {
 }
 
 func (e *Engine) nextPlayer() {
+	if e.numPlayersParticipating() <= 0 {
+		panic("cannot find next player: there are no more players remaining.")
+	}
 	gameState := e.GameState
-	gameState.CurrentPlayer++
-	gameState.CurrentPlayer = gameState.CurrentPlayer % 4
-	for !gameState.Players[gameState.CurrentPlayer].IsAlive() && len(gameState.Players[gameState.CurrentPlayer].Cards) > 0 {
-		gameState.CurrentPlayer++
-		gameState.CurrentPlayer = gameState.CurrentPlayer % 4
+	gameState.CurrentPlayerId++
+	gameState.CurrentPlayerId = gameState.CurrentPlayerId % 4
+	for !gameState.CurrentPlayer().IsAlive() || len(gameState.CurrentPlayer().Cards) <= 0 {
+		gameState.CurrentPlayerId++
+		gameState.CurrentPlayerId = gameState.CurrentPlayerId % 4
 	}
 }
 
+// interp. Representation of the results of a turn.
+// ChallengeResult: The result of a challenge if a challenge was issued
+// E: Any errors that occured in the processing of the turn
 type PlayResult struct {
+	ChallengeResult *ChallengeResult
+	E               error
+}
+
+// interp. Representation of the results of a challenge.
+// ChallengePassed: (A challenge was issued this turn) && (The challenge was passed, i.e. the challenged player did not lie)
+// CardReveal: The cards that the challenged player played last round
+// TriggerPlayer: The player that has to pull the trigger
+type ChallengeResult struct {
 	ChallengePassed bool
 	CardReveal      []Card
 	TriggerPlayer   *Player
-	E               error
 }
 
 func (e *Engine) Winner() *Player {
 	var winner *Player
-	for _,p := range e.GameState.Players {
+	for _, p := range e.GameState.Players {
 		if p.IsAlive() {
 			if winner == nil {
 				winner = p
 			} else {
 				return nil
 			}
-			
-		} 
+
+		}
 	}
 	return winner
 }
 
-func (e *Engine) AllHandsEmpty() bool {
-	for _,p := range e.GameState.Players {
+func (e *Engine) numPlayersParticipating() int {
+	count := 0
+	for _, p := range e.GameState.Players {
 		if p.IsAlive() && len(p.Cards) > 0 {
-			return false
-		} 
+			count++
+		}
 	}
-	return true
+	return count
 }
 
+// interp. Processes a turn and updates the gamestate and returns the results of that turn
 func (e *Engine) Play(t Turn) PlayResult {
 	gameState := e.GameState
-	CurrentPlayer := gameState.Players[gameState.CurrentPlayer]
-	PreviousPlayer := gameState.Players[gameState.PreviousPlayer]
+	CurrentPlayer := gameState.CurrentPlayer()
+	PreviousPlayer := gameState.PreviousPlayer()
 	if CurrentPlayer.CurrentCartridge >= CurrentPlayer.LiveCartridge {
-		return PlayResult{false, nil, nil, fmt.Errorf("Invalid Turn: Player %d is dead.", CurrentPlayer.Id)}
+		return PlayResult{nil, fmt.Errorf("invalid turn: Player %d is dead", CurrentPlayer.Id)}
 	}
 	if t.Action == Play {
+		// interp. Cards played that are invalid (i.e. cards that the player wants to play but doesn't have)
 		badCards := []Card{}
+		// interp. what the player's hand will look like after this turn
+		// This variable will eventually be that
 		newPlayerCards := make([]Card, len(CurrentPlayer.Cards))
 		copy(newPlayerCards, CurrentPlayer.Cards)
 
+		// Remove played cards
 		for _, c := range t.Cards {
 			if slices.Contains(CurrentPlayer.Cards, c) {
-				newPlayerCards = remove(newPlayerCards, c)
+				newPlayerCards = remove(newPlayerCards, c)	
 			} else {
 				badCards = append(badCards, c)
 			}
 		}
 		if len(badCards) > 0 {
-			return PlayResult{false, nil, nil, errors.New("Played cards that didn't exist: " + CardListToString(badCards))}
+			return PlayResult{nil, errors.New("Played cards that didn't exist: " + CardListToString(badCards))}
 		}
 		CurrentPlayer.Cards = newPlayerCards
-		if e.AllHandsEmpty() {
+
+		if e.numPlayersParticipating() == 1 {
+			e.nextPlayer()
 			return e.Play(Turn{Action: Challenge})
 		} else {
 			e.GameState.TurnHistory = append(e.GameState.TurnHistory, t)
 			gameState.CardsLastPlayed = t.Cards
-			gameState.PreviousPlayer = gameState.CurrentPlayer
+			gameState.PreviousPlayerId = gameState.CurrentPlayerId
 			e.nextPlayer()
-			return PlayResult{false, nil, nil, nil}
+			return PlayResult{nil, nil}
 		}
 	} else if t.Action == Challenge {
 		cardsLastPlayed := gameState.CardsLastPlayed
 		if len(gameState.CardsLastPlayed) <= 0 {
-			return PlayResult{false, nil, nil, errors.New("Invalid challenge: No cards have been played yet")}
+			return PlayResult{nil, errors.New("invalid challenge: No cards have been played yet")}
 		}
 		for _, c := range gameState.CardsLastPlayed {
 			if c != Joker && c != gameState.TableCard {
 				PreviousPlayer.CurrentCartridge++
 				e.ResetRound()
-				return PlayResult{false, cardsLastPlayed, PreviousPlayer, nil}
+				cr := new(ChallengeResult)
+				cr.ChallengePassed = false
+				cr.CardReveal = cardsLastPlayed
+				cr.TriggerPlayer = PreviousPlayer
+				return PlayResult{cr, nil}
 			}
 		}
 
 		CurrentPlayer.CurrentCartridge++
 		e.ResetRound()
-		return PlayResult{true, cardsLastPlayed, CurrentPlayer, nil}
+		cr := new(ChallengeResult)
+		cr.ChallengePassed = true
+		cr.CardReveal = cardsLastPlayed
+		cr.TriggerPlayer = CurrentPlayer
+		return PlayResult{cr, nil}
 	} else {
-		return PlayResult{false, nil, nil, errors.New("Unknown move: " + strconv.Itoa(int(t.Action)))}
+		return PlayResult{nil, errors.New("Unknown move: " + strconv.Itoa(int(t.Action)))}
 	}
 }
