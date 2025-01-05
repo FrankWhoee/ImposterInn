@@ -85,16 +85,7 @@ func main() {
 				}
 				processPlayResult(playResult, e.GameState)
 			} else {
-				cardStrings := strings.Split(strings.Trim(a, "\n "), " ")
-				playedCards := []engine.Card{}
-				var parseError error
-				for _, s := range cardStrings {
-					card, e := engine.StringToCard(strings.Trim(s, "\n"))
-					parseError = e
-					if e == nil {
-						playedCards = append(playedCards, card)
-					}
-				}
+				playedCards, parseError := engine.StringToCardList(a)
 				if parseError != nil {
 					fmt.Println(parseError.Error())
 					continue

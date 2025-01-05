@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 type Card int
@@ -36,6 +37,20 @@ func StringToCard(s string) (Card, error) {
 	return Card(i), nil
 }
 
+func StringToCardList(s string) ([]Card, error) {
+	cardStrings := strings.Split(strings.Trim(s, "\n "), " ")
+	cardList := []Card{}
+	for _, s := range cardStrings {
+		card, e := StringToCard(strings.Trim(s, "\n"))
+		if e == nil {
+			cardList = append(cardList, card)
+		} else {
+			return nil, e
+		}
+	}
+	return cardList, nil
+}
+
 type Action int
 
 const (
@@ -61,19 +76,19 @@ func (p *Player) IsAlive() bool {
 }
 
 type GameState struct {
-	Players         []*Player
-	TableCard       Card
-	CardsLastPlayed []Card
-	CurrentPlayerId   int
-	PreviousPlayerId  int
-	TurnHistory     []Turn
+	Players          []*Player
+	TableCard        Card
+	CardsLastPlayed  []Card
+	CurrentPlayerId  int
+	PreviousPlayerId int
+	TurnHistory      []Turn
 }
 
-func (g *GameState) CurrentPlayer() *Player{
+func (g *GameState) CurrentPlayer() *Player {
 	return g.Players[g.CurrentPlayerId]
 }
 
-func (g *GameState) PreviousPlayer() *Player{
+func (g *GameState) PreviousPlayer() *Player {
 	return g.Players[g.PreviousPlayerId]
 }
 
