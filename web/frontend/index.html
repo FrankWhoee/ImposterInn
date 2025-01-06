@@ -25,8 +25,8 @@
 <body>
   <div class="container">
     <div class="row">
-      <div class="col">
-          <p id="challengeresult"></p>
+      <div class="col text-center">
+          <p id="messagebanner"></p>
       </div>
     </div>
     <div class="row">
@@ -68,7 +68,7 @@
     ws.onmessage = function (msg) {
       console.log(msg.data)
       // document.getElementById("gamelog").innerHTML = msg.data.replaceAll('\n','<br>')
-      var cmds = { "iam": iam, "gast": gast, "hand": hand, "dis": dis };
+      var cmds = { "iam": iam, "gast": gast, "chre":gast, "hand": hand, "dis": dis };
       if (msg.data) {
         var parts = msg.data.split(" ")
         var cmd = cmds[parts[0]];
@@ -104,6 +104,7 @@
         lines = renderQueue.shift()
         console.log(lines)
         if (lines["chre"]) {
+          displayChallengeResult(lines)
           setTimeout(renderLoop, 5000)
         } else {
           displayGamestate(lines)
@@ -116,15 +117,15 @@
         // if (data.split("\n") >= 8) {
         challengerId = parseInt(lines["chre"][0])
         challengedId = parseInt(lines["chre"][1])
-        players = [challengerId,challengedId]
-        triggerPlayer = parseInt(lines["chre"][2])
+        players = [challengedId, challengerId]
+        challengePassed = parseInt(lines["chre"][2])
         numCardReveal = parseInt(lines["chre"][3])
         cards = ""
         for (let i = 0; i < numCardReveal; i++) {
           cards += intToCard[parseInt(lines["care" + i])] + " "
         }
 
-        setIdText("challengeresult", `Player ${challengerId} challenged ${challengedId}.<br>Revealing Cards: ${cards}<br>Player ${players[triggerPlayer]} pulls the trigger.`)
+        setIdText("messagebanner", `Player ${challengerId} challenged ${challengedId}.<br>Revealing Cards: ${cards}<br>Player ${players[challengePassed]} pulls the trigger.`)
     }
 
     function displayGamestate(lines) {
@@ -153,6 +154,12 @@
         setIdText("turnhistory", turnHistory)
         setIdText("tablecard", tableCard)
         setIdText("players", players)
+
+        if (currentPlayerId == 0) {
+          setIdText("messagebanner", "YOUR TURN")
+        } else {
+          setIdText("messagebanner", `Player ${currentPlayerId}'s turn.`)
+        }
     }
 
     function hand(data) {

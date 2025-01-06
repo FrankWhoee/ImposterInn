@@ -111,9 +111,9 @@ func (cr *ChallengeResult) ToIIP() string {
 		passBit = 1
 	}
 	// interp. {cr.ChallengerPlayer.Id} challenged {cr.ChallengedPlayer}. Did this challenge pass: {passBit}. Number of cards played last turn: {len(cr.CardReveal)}
-	sb.WriteString(fmt.Sprintf("chre %d %d %d %d", cr.ChallengerPlayer.Id, cr.ChallengedPlayer, passBit, len(cr.CardReveal)))
+	sb.WriteString(fmt.Sprintf("chre %d %d %d %d\n", cr.ChallengerPlayer.Id, cr.ChallengedPlayer.Id, passBit, len(cr.CardReveal)))
 	for i,c := range cr.CardReveal {
-		sb.WriteString(fmt.Sprintf("care%d %d", i, int(c)))
+		sb.WriteString(fmt.Sprintf("care%d %d\n", i, int(c)))
 	}
 	return sb.String()
 }
