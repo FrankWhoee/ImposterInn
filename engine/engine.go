@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 type Engine struct {
@@ -91,22 +92,30 @@ func (e *Engine) nextPlayer() {
 	}
 }
 
-// interp. Representation of the results of a turn.
-// ChallengeResult: The result of a challenge if a challenge was issued
-// E: Any errors that occured in the processing of the turn
-type PlayResult struct {
-	ChallengeResult *ChallengeResult
-	E               error
-}
-
 // interp. Representation of the results of a challenge.
 // ChallengePassed: (A challenge was issued this turn) && (The challenge was passed, i.e. the challenged player did not lie)
 // CardReveal: The cards that the challenged player played last round
 // TriggerPlayer: The player that has to pull the trigger
 type ChallengeResult struct {
-	ChallengePassed bool
-	CardReveal      []Card
-	TriggerPlayer   *Player
+	ChallengePassed  bool
+	CardReveal       []Card
+	ChallengerPlayer *Player
+	ChallengedPlayer *Player
+}
+
+func (cr *ChallengeResult) ToIIP() string {
+	var sb strings.Builder
+
+	passBit := 0
+	if cr.ChallengePassed {
+		passBit = 1
+	}
+	// interp. {cr.ChallengerPlayer.Id} challenged {cr.ChallengedPlayer}. Did this challenge pass: {passBit}. Number of cards played last turn: {len(cr.CardReveal)}
+	sb.WriteString(fmt.Sprintf("chre %d %d %d %d", cr.ChallengerPlayer.Id, cr.ChallengedPlayer, passBit, len(cr.CardReveal)))
+	for i,c := range cr.CardReveal {
+		sb.WriteString(fmt.Sprintf("care%d %d", i, int(c)))
+	}
+	return sb.String()
 }
 
 func (e *Engine) Winner() *Player {
@@ -135,12 +144,12 @@ func (e *Engine) numPlayersParticipating() int {
 }
 
 // interp. Processes a turn and updates the gamestate and returns the results of that turn
-func (e *Engine) Play(t Turn) PlayResult {
+func (e *Engine) Play(t Turn) (*ChallengeResult, error) {
 	gameState := e.GameState
 	CurrentPlayer := gameState.CurrentPlayer()
 	PreviousPlayer := gameState.PreviousPlayer()
 	if CurrentPlayer.CurrentCartridge >= CurrentPlayer.LiveCartridge {
-		return PlayResult{nil, fmt.Errorf("invalid turn: Player %d is dead", CurrentPlayer.Id)}
+		return nil, fmt.Errorf("invalid turn: Player %d is dead", CurrentPlayer.Id)
 	}
 	if t.Action == Play {
 		// interp. Cards played that are invalid (i.e. cards that the player wants to play but doesn't have)
@@ -153,51 +162,55 @@ func (e *Engine) Play(t Turn) PlayResult {
 		// Remove played cards
 		for _, c := range t.Cards {
 			if slices.Contains(CurrentPlayer.Cards, c) {
-				newPlayerCards = remove(newPlayerCards, c)	
+				newPlayerCards = remove(newPlayerCards, c)
 			} else {
 				badCards = append(badCards, c)
 			}
 		}
 		if len(badCards) > 0 {
-			return PlayResult{nil, errors.New("Played cards that didn't exist: " + CardListToString(badCards))}
+			return nil, errors.New("Played cards that didn't exist: " + CardListToString(badCards))
 		}
 		CurrentPlayer.Cards = newPlayerCards
 
 		if e.numPlayersParticipating() == 1 {
-			e.nextPlayer()
-			return e.Play(Turn{Action: Challenge})
+			// e.nextPlayer()
+			return e.Play(Turn{Action: Challenge, PlayerId: CurrentPlayer.Id})
 		} else {
 			e.GameState.TurnHistory = append(e.GameState.TurnHistory, t)
 			gameState.CardsLastPlayed = t.Cards
 			gameState.PreviousPlayerId = gameState.CurrentPlayerId
 			e.nextPlayer()
-			return PlayResult{nil, nil}
+			return nil, nil
 		}
 	} else if t.Action == Challenge {
 		cardsLastPlayed := gameState.CardsLastPlayed
 		if len(gameState.CardsLastPlayed) <= 0 {
-			return PlayResult{nil, errors.New("invalid challenge: No cards have been played yet")}
+			return nil, errors.New("invalid challenge: No cards have been played yet")
 		}
 		for _, c := range gameState.CardsLastPlayed {
 			if c != Joker && c != gameState.TableCard {
+				// Card that does not match TableCard found, so the challenge succeeded (i.e challenged player must pull the trigger)
 				PreviousPlayer.CurrentCartridge++
 				e.ResetRound()
 				cr := new(ChallengeResult)
 				cr.ChallengePassed = false
 				cr.CardReveal = cardsLastPlayed
-				cr.TriggerPlayer = PreviousPlayer
-				return PlayResult{cr, nil}
+				cr.ChallengerPlayer = CurrentPlayer
+				cr.ChallengedPlayer = PreviousPlayer
+				return cr, nil
 			}
 		}
 
+		// All cards match table card, so the challenge failed (i.e the challenger must pull the trigger)
 		CurrentPlayer.CurrentCartridge++
 		e.ResetRound()
 		cr := new(ChallengeResult)
 		cr.ChallengePassed = true
 		cr.CardReveal = cardsLastPlayed
-		cr.TriggerPlayer = CurrentPlayer
-		return PlayResult{cr, nil}
+		cr.ChallengerPlayer = CurrentPlayer
+		cr.ChallengedPlayer = PreviousPlayer
+		return cr, nil
 	} else {
-		return PlayResult{nil, errors.New("Unknown move: " + strconv.Itoa(int(t.Action)))}
+		return nil, errors.New("Unknown move: " + strconv.Itoa(int(t.Action)))
 	}
 }
