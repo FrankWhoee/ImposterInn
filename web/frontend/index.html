@@ -31,6 +31,8 @@
     </div>
     <div class="row">
       <div class="col">
+        <a>Your id:</a>
+        <p id="wid"></p>
         <a>Table Card:</a>
         <p id="tablecard"></p>
         <a>Players:</a>
@@ -53,7 +55,8 @@
   <script>
     var url = "ws://" + window.location.host + "/ws";
     var ws = new WebSocket(url);
-    var myid = "";
+    var mypid = "";
+    var mywid = "";
 
     var renderQueue = [];
 
@@ -68,7 +71,7 @@
     ws.onmessage = function (msg) {
       console.log(msg.data)
       // document.getElementById("gamelog").innerHTML = msg.data.replaceAll('\n','<br>')
-      var cmds = { "iam": iam, "gast": gast, "chre":gast, "hand": hand, "dis": dis };
+      var cmds = { "assn": assn, "gast": gast, "chre":gast, "hand": hand, "dis": dis };
       if (msg.data) {
         var parts = msg.data.split(" ")
         var cmd = cmds[parts[0]];
@@ -78,8 +81,10 @@
       }
     };
 
-    function iam(data) {
-      myid = data.split(" ")[1];
+    function assn(data) {
+      mypid = data.split(" ")[1];
+      mywid = data.split(" ")[2];
+      setIdText("wid", mywid)
     }
 
     function gast(data) {
@@ -155,7 +160,7 @@
         setIdText("tablecard", tableCard)
         setIdText("players", players)
 
-        if (currentPlayerId == 0) {
+        if (currentPlayerId == mywid) {
           setIdText("messagebanner", "YOUR TURN")
         } else {
           setIdText("messagebanner", `Player ${currentPlayerId}'s turn.`)

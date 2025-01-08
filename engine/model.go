@@ -21,6 +21,14 @@ func (c Card) String() string {
 	return cardStrings[c]
 }
 
+func CardlistToIIP(cards []Card) string {
+	var shand strings.Builder
+	for _, c := range cards {
+		shand.Write([]byte(fmt.Sprintf("%d ", c)))
+	}
+	return shand.String()
+}
+
 func CardListToString(cards []Card) string {
 	outputString := ""
 	for _, c := range cards {
