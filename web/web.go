@@ -6,19 +6,22 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"github.com/olahol/melody"
-	// "github.com/gofrs/uuid/v5"
+
 	"github.com/FrankWhoee/ImposterInn/engine"
+	"github.com/gofrs/uuid/v5"
+	"github.com/olahol/melody"
 )
 
-var idCounter atomic.Int64
-
-// var u1 = uuid.Must(uuid.NewV4())
+var pidCounter atomic.Int64
 
 func main() {
+	//interp. web id to player id mapping
+	// uuid -> int
+	widToPid := make(map[string]int)
+
 	m := melody.New()
 	e := engine.NewEngine()
-	bots := [3]engine.Bot{engine.Bot{Id: 1}, engine.Bot{Id: 2}, engine.Bot{Id: 3}}
+	bots := [3]engine.Bot{{Id: 1}, {Id: 2}, {Id: 3}}
 	continueUntilPlayer0(m, e, bots)
 	fmt.Println(engine.CardListToString(e.GameState.CurrentPlayer().Cards))
 
@@ -31,28 +34,28 @@ func main() {
 	})
 
 	m.HandleConnect(func(s *melody.Session) {
-		id := idCounter.Add(1)
-
+		idbytes, _ := uuid.Must(uuid.NewV4()).MarshalText()
+		id := string(idbytes)
+		widToPid[id] = int(pidCounter.Add(1))
 		s.Set("id", id)
 		m.Broadcast([]byte(e.GameState.ToIIP()))
 		sendHand(s, e.GameState.Players[0].Cards)
-		s.Write([]byte(fmt.Sprintf("iam %d", id)))
+		s.Write([]byte(fmt.Sprintf("assn %s", id)))
 	})
 
 	m.HandleDisconnect(func(s *melody.Session) {
 		if id, ok := s.Get("id"); ok {
-			m.BroadcastOthers([]byte(fmt.Sprintf("dis %d", id)), s)
+			m.BroadcastOthers([]byte(fmt.Sprintf("disc %d", id)), s)
 		}
 	})
 
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
-		if _, ok := s.Get("id"); ok {
-
-			smsg := string(msg)
+		if id, ok := s.Get("id"); ok && widToPid[id.(string)] != -1 {
+			smsg := strings.Trim(string(msg), " ")
 			fmt.Println(smsg)
 			if smsg[0:4] == "chal" {
 				t := engine.Turn{Action: engine.Challenge, Cards: nil, PlayerId: 0}
-				cr,e := e.Play(t)
+				cr, e := e.Play(t)
 				if e != nil {
 					fmt.Println(e.Error())
 					return
@@ -72,6 +75,14 @@ func main() {
 				fmt.Println(engine.CardListToString(cards))
 				t := engine.Turn{Action: engine.Play, Cards: cards, PlayerId: 0}
 				e.Play(t)
+			} else if smsg[0:4] == "iamp" {
+				newid := strings.Split(smsg, " ")[1]
+				if b, ok := widToPid[newid];  !ok || b == -1 {
+					s.Write([]byte(fmt.Sprintf("assn %s", newid)))
+					
+				} else {
+					s.Write([]byte(fmt.Sprintf("assn %s", id)))
+				}
 			} else {
 				return
 			}
@@ -105,7 +116,7 @@ func continueUntilPlayer0(m *melody.Melody, e *engine.Engine, bots [3]engine.Bot
 		t := bots[e.GameState.CurrentPlayerId-1].NextMove(e.GameState.TurnHistory, len(e.GameState.CardsLastPlayed), CurrentPlayer.Cards, e.GameState.TableCard, PreviousPlayer.CurrentCartridge)
 		if t.Action == engine.Challenge {
 			fmt.Printf("Player %d challenges player %d.\n", CurrentPlayer.Id, PreviousPlayer.Id)
-			cr,e := e.Play(t)
+			cr, e := e.Play(t)
 			broadcastChallengeResult(m, cr)
 			if e != nil {
 				fmt.Println(e.Error())
