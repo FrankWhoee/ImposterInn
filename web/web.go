@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -15,9 +17,9 @@ import (
 var pidCounter atomic.Int64
 
 func main() {
-	//interp. web id to player id mapping
-	// uuid -> int
-	widToPid := make(map[string]int)
+	pidSet := make(map[string]bool)
+	widToPid := make(map[int]string)
+	pidToWid := make(map[string]int)
 
 	m := melody.New()
 	e := engine.NewEngine()
@@ -35,12 +37,28 @@ func main() {
 
 	m.HandleConnect(func(s *melody.Session) {
 		idbytes, _ := uuid.Must(uuid.NewV4()).MarshalText()
-		id := string(idbytes)
-		widToPid[id] = int(pidCounter.Add(1))
-		s.Set("id", id)
+		pid := string(idbytes)
+		pidSet[pid] = true
+		wid := 0
+		for i := 0; i < len(widToPid); i++{
+			wid = i
+			if widToPid[i] == "" {
+				break
+			}
+		}
+		if widToPid[wid] != "" {
+			wid++
+			widToPid[wid] = pid
+			pidToWid[pid] = wid
+		} else {
+			widToPid[wid] = pid
+			pidToWid[pid] = wid
+		}
+
+		s.Set("id", pid)
 		m.Broadcast([]byte(e.GameState.ToIIP()))
 		sendHand(s, e.GameState.Players[0].Cards)
-		s.Write([]byte(fmt.Sprintf("assn %s", id)))
+		s.Write([]byte(fmt.Sprintf("assn %s", pid)))
 	})
 
 	m.HandleDisconnect(func(s *melody.Session) {
@@ -50,7 +68,7 @@ func main() {
 	})
 
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
-		if id, ok := s.Get("id"); ok && widToPid[id.(string)] != -1 {
+		if id, ok := s.Get("id"); ok && pidSet[id.(string)] != false {
 			smsg := strings.Trim(string(msg), " ")
 			fmt.Println(smsg)
 			if smsg[0:4] == "chal" {
@@ -77,9 +95,12 @@ func main() {
 				e.Play(t)
 			} else if smsg[0:4] == "iamp" {
 				newid := strings.Split(smsg, " ")[1]
-				if b, ok := widToPid[newid];  !ok || b == -1 {
+				if b, ok := pidSet[newid];  !ok || b == false {
 					s.Write([]byte(fmt.Sprintf("assn %s", newid)))
-					
+					wid := pidToWid[id.(string)]
+					widToPid[wid] = id.(string) 
+					pidToWid[newid] = wid
+					pidSet[id.(string)] = false
 				} else {
 					s.Write([]byte(fmt.Sprintf("assn %s", id)))
 				}
