@@ -1,30 +1,28 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
-	"sync/atomic"
 
 	"github.com/FrankWhoee/ImposterInn/engine"
 	"github.com/gofrs/uuid/v5"
 	"github.com/olahol/melody"
 )
 
-var pidCounter atomic.Int64
+var pidSet map[string]bool
+var widToPid map[int]string
+var pidToWid map[string]int
 
 func main() {
-	pidSet := make(map[string]bool)
-	widToPid := make(map[int]string)
-	pidToWid := make(map[string]int)
+	pidSet = make(map[string]bool)
+	widToPid = make(map[int]string)
+	pidToWid = make(map[string]int)
 
 	m := melody.New()
 	e := engine.NewEngine()
-	bots := [3]engine.Bot{{Id: 1}, {Id: 2}, {Id: 3}}
-	continueUntilPlayer0(m, e, bots)
+	bots := [4]engine.Bot{{Id: 0}, {Id: 1}, {Id: 2}, {Id: 3}}
 	fmt.Println(engine.CardListToString(e.GameState.CurrentPlayer().Cards))
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -36,11 +34,11 @@ func main() {
 	})
 
 	m.HandleConnect(func(s *melody.Session) {
-		idbytes, _ := uuid.Must(uuid.NewV4()).MarshalText()
-		pid := string(idbytes)
+		pidbytes, _ := uuid.Must(uuid.NewV4()).MarshalText()
+		pid := string(pidbytes)
 		pidSet[pid] = true
 		wid := 0
-		for i := 0; i < len(widToPid); i++{
+		for i := 0; i < len(widToPid); i++ {
 			wid = i
 			if widToPid[i] == "" {
 				break
@@ -55,20 +53,25 @@ func main() {
 			pidToWid[pid] = wid
 		}
 
-		s.Set("id", pid)
+		s.Set("pid", pid)
+		continueUntilLivePlayer(m, e, bots)
 		m.Broadcast([]byte(e.GameState.ToIIP()))
 		sendHand(s, e.GameState.Players[0].Cards)
 		s.Write([]byte(fmt.Sprintf("assn %s", pid)))
 	})
 
 	m.HandleDisconnect(func(s *melody.Session) {
-		if id, ok := s.Get("id"); ok {
-			m.BroadcastOthers([]byte(fmt.Sprintf("disc %d", id)), s)
+		if pid, ok := s.Get("id"); ok {
+			m.BroadcastOthers([]byte(fmt.Sprintf("disc %d", pid)), s)
+			wid := pidToWid[pid.(string)]
+			pidSet[pid.(string)] = false
+			delete(pidToWid, pid.(string))
+			delete(widToPid, wid)
 		}
 	})
 
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
-		if id, ok := s.Get("id"); ok && pidSet[id.(string)] != false {
+		if pid, ok := s.Get("pid"); ok && pidSet[pid.(string)] != false {
 			smsg := strings.Trim(string(msg), " ")
 			fmt.Println(smsg)
 			if smsg[0:4] == "chal" {
@@ -95,20 +98,20 @@ func main() {
 				e.Play(t)
 			} else if smsg[0:4] == "iamp" {
 				newid := strings.Split(smsg, " ")[1]
-				if b, ok := pidSet[newid];  !ok || b == false {
+				if b, ok := pidSet[newid]; !ok || b == false {
 					s.Write([]byte(fmt.Sprintf("assn %s", newid)))
-					wid := pidToWid[id.(string)]
-					widToPid[wid] = id.(string) 
+					wid := pidToWid[pid.(string)]
+					widToPid[wid] = pid.(string)
 					pidToWid[newid] = wid
-					pidSet[id.(string)] = false
+					pidSet[pid.(string)] = false
 				} else {
-					s.Write([]byte(fmt.Sprintf("assn %s", id)))
+					s.Write([]byte(fmt.Sprintf("assn %s", pid)))
 				}
 			} else {
 				return
 			}
 
-			continueUntilPlayer0(m, e, bots)
+			continueUntilLivePlayer(m, e, bots)
 			m.Broadcast([]byte(e.GameState.ToIIP()))
 			sendHand(s, e.GameState.Players[0].Cards)
 		}
@@ -130,11 +133,13 @@ func broadcastChallengeResult(m *melody.Melody, cr *engine.ChallengeResult) {
 	m.Broadcast([]byte(cr.ToIIP()))
 }
 
-func continueUntilPlayer0(m *melody.Melody, e *engine.Engine, bots [3]engine.Bot) {
-	for e.GameState.CurrentPlayerId != 0 {
+func continueUntilLivePlayer(m *melody.Melody, e *engine.Engine, bots [4]engine.Bot) {
+	fmt.Println(widToPid)
+	for _,ok := widToPid[e.GameState.CurrentPlayerId]; !ok; {
+		fmt.Printf("%d %s %t", e.GameState.CurrentPlayerId, widToPid[e.GameState.CurrentPlayerId], ok)
 		CurrentPlayer := e.GameState.CurrentPlayer()
 		PreviousPlayer := e.GameState.PreviousPlayer()
-		t := bots[e.GameState.CurrentPlayerId-1].NextMove(e.GameState.TurnHistory, len(e.GameState.CardsLastPlayed), CurrentPlayer.Cards, e.GameState.TableCard, PreviousPlayer.CurrentCartridge)
+		t := bots[e.GameState.CurrentPlayerId].NextMove(e.GameState.TurnHistory, len(e.GameState.CardsLastPlayed), CurrentPlayer.Cards, e.GameState.TableCard, PreviousPlayer.CurrentCartridge)
 		if t.Action == engine.Challenge {
 			fmt.Printf("Player %d challenges player %d.\n", CurrentPlayer.Id, PreviousPlayer.Id)
 			cr, e := e.Play(t)
