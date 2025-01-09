@@ -34,6 +34,7 @@ func main() {
 	})
 
 	m.HandleConnect(func(s *melody.Session) {
+		updateActiveConnections(m)
 		pidbytes, _ := uuid.Must(uuid.NewV4()).MarshalText()
 		pid := string(pidbytes)
 		pidSet[pid] = true
@@ -61,15 +62,7 @@ func main() {
 		fmt.Println(widToPid)
 	})
 
-	m.HandleDisconnect(func(s *melody.Session) {
-		if pid, ok := s.Get("id"); ok {
-			m.BroadcastOthers([]byte(fmt.Sprintf("disc %d", pid)), s)
-			wid := pidToWid[pid.(string)]
-			pidSet[pid.(string)] = false
-			delete(pidToWid, pid.(string))
-			delete(widToPid, wid)
-		}
-	})
+	m.HandleDisconnect(removePlayer)
 
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
 		if pid, ok := s.Get("pid"); ok && pidSet[pid.(string)] {
@@ -120,6 +113,29 @@ func main() {
 	})
 
 	http.ListenAndServe(":5000", nil)
+}
+
+// Go through all melody sessions and remove them if their session is closed
+func updateActiveConnections(m *melody.Melody) {
+	sessions, ok := m.Sessions()
+	if ok != nil {
+		return
+	}
+	for _,s := range sessions {
+		if s.IsClosed() {
+			removePlayer(s)
+		}
+	}
+}
+
+func removePlayer(s *melody.Session) {
+	if pid, ok := s.Get("id"); ok {
+		// m.BroadcastOthers([]byte(fmt.Sprintf("disc %d", pid)), s)
+		wid := pidToWid[pid.(string)]
+		pidSet[pid.(string)] = false
+		delete(pidToWid, pid.(string))
+		delete(widToPid, wid)
+	}
 }
 
 func sendHand(s *melody.Session, cards []engine.Card) {
