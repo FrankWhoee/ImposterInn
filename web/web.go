@@ -54,7 +54,7 @@ func main() {
 		}
 
 		s.Set("pid", pid)
-		continueUntilLivePlayer(m, e, bots)
+		continueUntilRealPlayer(m, e, bots)
 		m.Broadcast([]byte(e.GameState.ToIIP()))
 		sendHand(s, e.GameState.Players[wid].Cards)
 		s.Write([]byte(fmt.Sprintf("assn %s %d", pid, wid)))
@@ -73,9 +73,10 @@ func main() {
 
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
 		if pid, ok := s.Get("pid"); ok && pidSet[pid.(string)] {
+			spid := pid.(string)
 			smsg := strings.Trim(string(msg), " ")
 			fmt.Println(smsg)
-			if smsg[0:4] == "chal" {
+			if smsg[0:4] == "chal" && pidToWid[spid] == e.GameState.CurrentPlayerId {
 				t := engine.Turn{Action: engine.Challenge, Cards: nil, PlayerId: 0}
 				cr, e := e.Play(t)
 				if e != nil {
@@ -83,7 +84,7 @@ func main() {
 					return
 				}
 				broadcastChallengeResult(m, cr)
-			} else if smsg[0:4] == "play" {
+			} else if smsg[0:4] == "play" && pidToWid[spid] == e.GameState.CurrentPlayerId {
 				cardStrings := strings.Split(strings.Trim(smsg[5:], "\n "), " ")
 				fmt.Println(cardStrings)
 				cards := make([]engine.Card, 0)
@@ -95,16 +96,16 @@ func main() {
 					}
 				}
 				fmt.Println(engine.CardListToString(cards))
-				t := engine.Turn{Action: engine.Play, Cards: cards, PlayerId: pidToWid[pid.(string)]}
+				t := engine.Turn{Action: engine.Play, Cards: cards, PlayerId: pidToWid[spid]}
 				e.Play(t)
 			} else if smsg[0:4] == "iamp" {
 				newid := strings.Split(smsg, " ")[1]
 				if b, ok := pidSet[newid]; !ok || !b {
 					s.Write([]byte(fmt.Sprintf("assn %s", newid)))
-					wid := pidToWid[pid.(string)]
-					widToPid[wid] = pid.(string)
+					wid := pidToWid[spid]
+					widToPid[wid] = spid
 					pidToWid[newid] = wid
-					pidSet[pid.(string)] = false
+					pidSet[spid] = false
 				} else {
 					s.Write([]byte(fmt.Sprintf("assn %s", pid)))
 				}
@@ -112,12 +113,9 @@ func main() {
 			} else {
 				return
 			}
-
-			continueUntilLivePlayer(m, e, bots)
-			m.Broadcast([]byte(e.GameState.ToIIP()))
-			fmt.Println(engine.CardListToString(e.GameState.Players[pidToWid[pid.(string)]].Cards))
-			// sendHand(s, e.GameState.Players[pidToWid[pid.(string)]].Cards)
-			privateBroadcastHand(m,e.GameState)
+			continueUntilRealPlayer(m, e, bots)
+			// sendHand(s, e.GameState.Players[pidToWid[spid]].Cards)
+			privateBroadcastHand(m, e.GameState)
 		}
 	})
 
@@ -142,22 +140,28 @@ func privateBroadcastHand(m *melody.Melody, g *engine.GameState) {
 		shand.WriteString("hand ")
 		shand.WriteString(engine.CardlistToIIP(cards))
 		m.BroadcastFilter([]byte(shand.String()), func(s *melody.Session) bool {
-			pid,ok := s.Get("pid")
+			pid, ok := s.Get("pid")
 			return ok && pid == widToPid[p.Id]
 		})
 	}
 }
+
 // func makePidCheck(pid string) {
 // 	return func
 // }
 
-func continueUntilLivePlayer(m *melody.Melody, e *engine.Engine, bots [4]engine.Bot) {
+func continueUntilRealPlayer(m *melody.Melody, e *engine.Engine, bots [4]engine.Bot) {
 
 	for {
 		// a,b :=
 		// fmt.Printf("%d %s %t\n", e.GameState.CurrentPlayerId, widToPid[e.GameState.CurrentPlayerId], ok)
+		if e.Winner() != nil {
+			m.Broadcast([]byte(fmt.Sprintf("winp %d %d %d", e.Winner().Id, e.Winner().CurrentCartridge, e.Winner().LiveCartridge)))
+			break
+		}
 		_, ok := widToPid[e.GameState.CurrentPlayerId]
 		if ok {
+			m.Broadcast([]byte(e.GameState.ToIIP()))
 			break
 		}
 		CurrentPlayer := e.GameState.CurrentPlayer()
