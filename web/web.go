@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -62,7 +63,11 @@ func main() {
 		fmt.Println(widToPid)
 	})
 
-	m.HandleDisconnect(removePlayer)
+	m.HandleDisconnect(func(s *melody.Session) {
+		if pid, ok := s.Get("id"); ok {
+			removePlayer(pid.(string))
+		}
+	})
 
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
 		if pid, ok := s.Get("pid"); ok && pidSet[pid.(string)] {
@@ -117,25 +122,32 @@ func main() {
 
 // Go through all melody sessions and remove them if their session is closed
 func updateActiveConnections(m *melody.Melody) {
-	sessions, ok := m.Sessions()
-	if ok != nil {
+	fmt.Println("Update sessions")
+	sessions, e := m.Sessions()
+	if e != nil {
+		fmt.Println(e)
 		return
 	}
-	for _,s := range sessions {
-		if s.IsClosed() {
-			removePlayer(s)
+	active_ids := make([]string, 0)
+	for _, s := range sessions {
+		pid, ok := s.Get("pid")
+		if ok && !s.IsClosed() {
+			active_ids = append(active_ids, pid.(string))
+		}
+	}
+	for pid := range pidSet {
+		if !slices.Contains(active_ids, pid) {
+			fmt.Println(pid)
+			removePlayer(pid)
 		}
 	}
 }
 
-func removePlayer(s *melody.Session) {
-	if pid, ok := s.Get("id"); ok {
-		// m.BroadcastOthers([]byte(fmt.Sprintf("disc %d", pid)), s)
-		wid := pidToWid[pid.(string)]
-		pidSet[pid.(string)] = false
-		delete(pidToWid, pid.(string))
-		delete(widToPid, wid)
-	}
+func removePlayer(pid string) {
+	wid := pidToWid[pid]
+	delete(pidSet, pid)
+	delete(pidToWid, pid)
+	delete(widToPid, wid)
 }
 
 func sendHand(s *melody.Session, cards []engine.Card) {
