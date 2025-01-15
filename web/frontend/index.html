@@ -26,7 +26,7 @@
   <div class="container">
     <div class="row">
       <div class="col text-center">
-          <p id="messagebanner"></p>
+        <p id="messagebanner"></p>
       </div>
     </div>
     <div class="row">
@@ -53,14 +53,23 @@
 
 
   <script>
+    intToCard = ["King", "Queen", "Ace", "Joker"]
+
     var url = "ws://" + window.location.host + "/ws";
     var ws = new WebSocket(url);
-    var mypid = "";
+    var mypid = localStorage.getItem("pid");
     var mywid = "";
 
     var renderQueue = [];
 
-    intToCard = ["King", "Queen", "Ace", "Joker"]
+    ws.onopen = function (event) {
+      if (mypid == null) {
+        console.log("rqid")
+        ws.send("rqid")
+      } else {
+        ws.send("iamp " + mypid)
+      }
+    }
 
     function cardToInt(s) {
       return intToCard.findIndex(el => el == s)
@@ -71,7 +80,7 @@
     ws.onmessage = function (msg) {
       console.log(msg.data)
       // document.getElementById("gamelog").innerHTML = msg.data.replaceAll('\n','<br>')
-      var cmds = { "assn": assn, "gast": pushRender, "chre":pushRender, "hand": hand, "dis": dis, "winp": pushRender };
+      var cmds = { "assn": assn, "gast": pushRender, "chre": pushRender, "hand": hand, "dis": dis, "winp": pushRender };
       if (msg.data) {
         var parts = msg.data.split(" ")
         var cmd = cmds[parts[0]];
@@ -85,6 +94,7 @@
       mypid = data.split(" ")[1];
       mywid = data.split(" ")[2];
       setIdText("wid", mywid)
+      localStorage.setItem("pid", mypid)
     }
 
     function pushRender(data) {
@@ -96,7 +106,7 @@
 
       renderQueue.push(lines)
 
-      
+
 
       // }
     }
@@ -112,71 +122,71 @@
 
     function renderLoop() {
       if (renderQueue.length <= 0) {
-          setTimeout(renderLoop, 1000)
-          return
-        }
-        lines = renderQueue.shift()
-        console.log(lines)
-        if (lines["chre"]) {
-          chre(lines)
-          setTimeout(renderLoop, 3000)
-        } else if (lines["gast"]) {
-          gast(lines)
-          setTimeout(renderLoop, 1000)
-        } else if (lines["winp"]) {
-          winp(lines)
-          setTimeout(renderLoop, 5000)
-        }
-        
+        setTimeout(renderLoop, 1000)
+        return
+      }
+      lines = renderQueue.shift()
+      console.log(lines)
+      if (lines["chre"]) {
+        chre(lines)
+        setTimeout(renderLoop, 3000)
+      } else if (lines["gast"]) {
+        gast(lines)
+        setTimeout(renderLoop, 1000)
+      } else if (lines["winp"]) {
+        winp(lines)
+        setTimeout(renderLoop, 5000)
+      }
+
     }
 
     function chre(lines) {
-        // if (data.split("\n") >= 8) {
-        challengerId = parseInt(lines["chre"][0])
-        challengedId = parseInt(lines["chre"][1])
-        players = [challengedId, challengerId]
-        challengePassed = parseInt(lines["chre"][2])
-        numCardReveal = parseInt(lines["chre"][3])
-        cards = ""
-        for (let i = 0; i < numCardReveal; i++) {
-          cards += intToCard[parseInt(lines["care" + i])] + " "
-        }
+      // if (data.split("\n") >= 8) {
+      challengerId = parseInt(lines["chre"][0])
+      challengedId = parseInt(lines["chre"][1])
+      players = [challengedId, challengerId]
+      challengePassed = parseInt(lines["chre"][2])
+      numCardReveal = parseInt(lines["chre"][3])
+      cards = ""
+      for (let i = 0; i < numCardReveal; i++) {
+        cards += intToCard[parseInt(lines["care" + i])] + " "
+      }
 
-        setIdText("messagebanner", `Player ${challengerId} challenged ${challengedId}.<br>Revealing Cards: ${cards}<br>Player ${players[challengePassed]} pulls the trigger.`)
+      setIdText("messagebanner", `Player ${challengerId} challenged ${challengedId}.<br>Revealing Cards: ${cards}<br>Player ${players[challengePassed]} pulls the trigger.`)
     }
 
     function gast(lines) {
-        // if (data.split("\n") >= 8) {
-        tableCard = intToCard[parseInt(lines["tbcd"][0])]
-        numCardsLastPlayed = parseInt(lines["nclp"][0])
-        currentPlayerId = parseInt(lines["cpid"][0])
-        previousPlayerId = parseInt(lines["ppid"][0])
-        numPlayers = parseInt(lines["plys"][0])
-        players = ""
-        for (let i = 0; i < numPlayers; i++) {
-          player = lines["plyr" + i]
-          isAlive = "alive"
-          if (parseInt(player[1]) == 0) {
-            isAlive = "dead"
-          }
-          players += `[${isAlive}] player ${i} has pulled the trigger ${player[0]} times.<br>`
+      // if (data.split("\n") >= 8) {
+      tableCard = intToCard[parseInt(lines["tbcd"][0])]
+      numCardsLastPlayed = parseInt(lines["nclp"][0])
+      currentPlayerId = parseInt(lines["cpid"][0])
+      previousPlayerId = parseInt(lines["ppid"][0])
+      numPlayers = parseInt(lines["plys"][0])
+      players = ""
+      for (let i = 0; i < numPlayers; i++) {
+        player = lines["plyr" + i]
+        isAlive = "alive"
+        if (parseInt(player[1]) == 0) {
+          isAlive = "dead"
         }
-        numTurnHistory = parseInt(lines["tuhi"][0])
-        turnHistory = ""
-        for (let i = 0; i < numTurnHistory; i++) {
-          turn = lines["turn" + i]
-          turnHistory += `${i}) player ${turn[0]} claims ${turn[1]} ${tableCard}s.<br>`
-        }
+        players += `[${isAlive}] player ${i} has pulled the trigger ${player[0]} times.<br>`
+      }
+      numTurnHistory = parseInt(lines["tuhi"][0])
+      turnHistory = ""
+      for (let i = 0; i < numTurnHistory; i++) {
+        turn = lines["turn" + i]
+        turnHistory += `${i}) player ${turn[0]} claims ${turn[1]} ${tableCard}s.<br>`
+      }
 
-        setIdText("turnhistory", turnHistory)
-        setIdText("tablecard", tableCard)
-        setIdText("players", players)
+      setIdText("turnhistory", turnHistory)
+      setIdText("tablecard", tableCard)
+      setIdText("players", players)
 
-        if (currentPlayerId == mywid) {
-          setIdText("messagebanner", "YOUR TURN")
-        } else {
-          setIdText("messagebanner", `Player ${currentPlayerId}'s turn.`)
-        }
+      if (currentPlayerId == mywid) {
+        setIdText("messagebanner", "YOUR TURN")
+      } else {
+        setIdText("messagebanner", `Player ${currentPlayerId}'s turn.`)
+      }
     }
 
     function hand(data) {
