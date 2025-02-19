@@ -37,11 +37,21 @@ func main() {
 	e := engine.NewEngine()
 	fmt.Println(engine.CardListToString(e.GameState.CurrentPlayer().Cards))
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "web/frontend/index.html")
+	http.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "web/frontend/dist/index.html")
 	})
 
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("GET /assets/{path}", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("Asset Request /assets/{path}: %s\n", r.PathValue("path"))
+		http.ServeFile(w, r, "web/frontend/dist/assets/" + r.PathValue("path"))
+	})
+
+	http.HandleFunc("GET /{path}", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("Asset Request /{path}: %s\n", r.PathValue("path"))
+		http.ServeFile(w, r, "web/frontend/dist/" + r.PathValue("path"))
+	})
+
+	http.HandleFunc("/ws/{$}", func(w http.ResponseWriter, r *http.Request) {
 		m.HandleRequest(w, r)
 	})
 
