@@ -1,0 +1,17 @@
+syntax = "proto3";
+package transfer;
+
+option go_package = "dto/transfer";
+
+message lbcrRequest {
+    string webid = 1;
+}
+
+message lbcrResponse {
+    int32 lobbyid = 1;
+}
+
+message lbjnDTO {
+    string webid = 1;
+    int32 lobbyid = 2;
+}

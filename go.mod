@@ -5,6 +5,11 @@ go 1.22.2
 require github.com/olahol/melody v1.2.1
 
 require (
+	github.com/golang/protobuf v1.5.4 // indirect
+	google.golang.org/protobuf v1.36.5 // indirect
+)
+
+require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/gofrs/uuid/v5 v5.3.0

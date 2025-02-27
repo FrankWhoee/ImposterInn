@@ -2,61 +2,115 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"math/rand/v2"
 	"net/http"
 	"strconv"
+
+	// "strconv"
 	"strings"
 
+	"github.com/gofrs/uuid/v5"
+	"github.com/golang/protobuf/proto"
+
 	"github.com/FrankWhoee/ImposterInn/engine"
+	"github.com/FrankWhoee/ImposterInn/web/dto/transfer"
 	"github.com/olahol/melody"
 )
 
 // Pointer because maybe we want to pass it around in the future?
 var idBroker *IdBroker
 
+type Lobby struct {
+	id     int
+	users  []User
+	status LobbyStatus
+}
+
+type LobbyStatus int
+
+const (
+	Waiting LobbyStatus = iota
+	InGame
+)
+
+var lobbies map[int]*Lobby
+
+var users map[string]*User
+
 type MessageContext struct {
 	cmd          string
 	cmdargs      []string
 	loginContext *LoginContext
-	e            *engine.Engine
 	s            *melody.Session
 	m            *melody.Melody
 }
 
 type LoginContext struct {
-	pid string
-	wid int
+	lobby *Lobby
+	user  *User
+}
 
-	isInLobby bool
-	lobbyId   string
+type User struct {
+	username     string
+	webid        string
+	enginePlayer *engine.Player
 }
 
 func main() {
-	idBroker = NewIdBroker()
-
 	m := melody.New()
 	e := engine.NewEngine()
 	fmt.Println(engine.CardListToString(e.GameState.CurrentPlayer().Cards))
 
+	cmdToFn := make(map[string]func(*MessageContext))
+	cmdToFn["lbcr"] = lbcr
+	cmdToFn["rqid"] = rqid
+	cmdToFn["amid"] = amid
+	cmdToFn["name"] = name
+
+	lobbies = make(map[int]*Lobby)
+	users = make(map[string]*User)
+
 	http.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("Request /: %s\n", r.PathValue("path"))
 		http.ServeFile(w, r, "web/frontend/dist/index.html")
 	})
 
 	http.HandleFunc("GET /assets/{path}", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Asset Request /assets/{path}: %s\n", r.PathValue("path"))
-		http.ServeFile(w, r, "web/frontend/dist/assets/" + r.PathValue("path"))
+		http.ServeFile(w, r, "web/frontend/dist/assets/"+r.PathValue("path"))
 	})
 
-	http.HandleFunc("GET /{path}", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("GET /images/{path}/{$}", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Asset Request /{path}: %s\n", r.PathValue("path"))
-		http.ServeFile(w, r, "web/frontend/dist/" + r.PathValue("path"))
+		http.ServeFile(w, r, "web/frontend/dist/"+r.PathValue("path"))
 	})
 
-	http.HandleFunc("/ws/{$}", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("WebSocket Request /ws/\n")
 		m.HandleRequest(w, r)
 	})
 
-	m.HandleConnect(func(s *melody.Session) {
+	http.HandleFunc("POST /lbcr", func(w http.ResponseWriter, r *http.Request) {
+		request := &transfer.LbcrDTO{}
+		reqbody,_ := io.ReadAll(r.Body)
+		proto.Unmarshal(reqbody, request)
 
+		newLobbyId := 111111 + rand.IntN(888888)
+		lobbies[newLobbyId] = new(Lobby)
+		lobbies[newLobbyId].id = newLobbyId
+		lobbies[newLobbyId].users = make([]User, 0)
+		lobbies[newLobbyId].status = Waiting
+
+		lobbies[newLobbyId].users = append(lobbies[newLobbyId].users, *users[request.Webid])
+
+		response := &transfer.LbcrResponseDTO{
+			Lobbyid: int32(newLobbyId),
+		}
+		w.Write([]byte(fmt.Sprintf("lbid %d", newLobbyId)))
+	})
+
+	m.HandleConnect(func(s *melody.Session) {
 	})
 
 	m.HandleDisconnect(func(s *melody.Session) {
@@ -70,159 +124,95 @@ func main() {
 		fmt.Println(smsg)
 
 		cmd := smsg[0:4]
-		cmdargs := make([]string, 0)
-		if len(smsg) > 4 {
-			cmdargs = strings.Split(strings.Trim(smsg[5:], "\n "), " ")
-		}
-
-		var loginContext *LoginContext
-
-		if pid, ok := s.Get("pid"); ok {
-			loginContext = new(LoginContext)
-			loginContext.pid = pid.(string)
-			wid, isInLobby := idBroker.getWid(pid.(string))
-			loginContext.isInLobby = isInLobby
-			loginContext.wid = wid
-		}
+		fmt.Printf("cmd is %s\n", cmd)
+		// cmdargs := make([]string, 0)
 
 		messageContext := new(MessageContext)
-		*messageContext = MessageContext{cmd, cmdargs, loginContext, e, s, m}
+		messageContext.cmd = cmd
+		if len(smsg) > 4 {
+			messageContext.cmdargs = strings.Split(strings.Trim(smsg[5:], "\n "), " ")
+		}
+		messageContext.s = s
+		messageContext.m = m
 
-		msg_to_fn := make(map[string]func(*MessageContext))
-		msg_to_fn["chal"] = chal
-		msg_to_fn["rqid"] = rqid
-		msg_to_fn["play"] = play
-		msg_to_fn["iamp"] = iamp
+		userid, ok := s.Get("id")
+		if ok {
+			messageContext.loginContext = new(LoginContext)
+			messageContext.loginContext.user = users[userid.(string)]
+		}
 
-		msg_to_fn[cmd](messageContext)
+		cmdToFn[cmd](messageContext)
 	})
 
 	http.ListenAndServe(":5000", nil)
 }
 
-func chal(mc *MessageContext) {
-	t := engine.Turn{Action: engine.Challenge, Cards: nil, PlayerId: mc.loginContext.wid}
-	cr, e := mc.e.Play(t)
-	if e != nil {
-		fmt.Println(e.Error())
+// (l)o(b)by (cr)eate: Handle client creating a new lobby
+func lbcr(mc *MessageContext) {
+	newLobbyId := 111111 + rand.IntN(888888)
+	lobbies[newLobbyId] = new(Lobby)
+	lobbies[newLobbyId].id = newLobbyId
+	lobbies[newLobbyId].users = make([]User, 0)
+	lobbies[newLobbyId].status = Waiting
+
+	lobbies[newLobbyId].users = append(lobbies[newLobbyId].users, *mc.loginContext.user)
+
+	mc.s.Write([]byte(fmt.Sprintf("lbid %d", newLobbyId)))
+}
+
+// (l)o(b)by (j)o(i)n: Handle client joining a lobby
+func lbjn(mc *MessageContext) {
+	lobbyId, atoierr := strconv.Atoi(mc.cmdargs[0])
+	if atoierr != nil {
 		return
 	}
-	broadcastChallengeResult(mc.m, cr)
-	continueUntilRealPlayer(mc.m, mc.e)
-	privateBroadcastHand(mc.m, mc.e.GameState)
-}
-
-func play(mc *MessageContext) {
-	cardStrings := mc.cmdargs
-	fmt.Println(cardStrings)
-	cards := make([]engine.Card, 0)
-	for _, cs := range cardStrings {
-		cardint, e := strconv.Atoi(cs)
-		card := engine.Card(cardint)
-		if e == nil {
-			cards = append(cards, card)
-		}
+	lobby, ok := lobbies[lobbyId]
+	if !ok {
+		return
 	}
-	fmt.Println(engine.CardListToString(cards))
-	t := engine.Turn{Action: engine.Play, Cards: cards, PlayerId: mc.loginContext.wid}
-	mc.e.Play(t)
-	continueUntilRealPlayer(mc.m, mc.e)
+	lobby.users = append(lobby.users, *mc.loginContext.user)
 }
 
-func iamp(mc *MessageContext) {
-	requestedPid := mc.cmdargs[0]
-	if idBroker.isRegistered(requestedPid) {
-		if wid, isInLobby := idBroker.getWid(requestedPid); isInLobby {
-			mc.s.Write([]byte(fmt.Sprintf("assn %s %d", requestedPid, wid)))
-			sendHand(mc.s, mc.e.GameState.Players[wid].Cards)
-		} else {
-			wid := idBroker.assignWid(requestedPid)
-			mc.s.Write([]byte(fmt.Sprintf("assn %s %d", requestedPid, wid)))
-
-			sendHand(mc.s, mc.e.GameState.Players[wid].Cards)
-		}
-		mc.s.Set("pid", requestedPid)
-	} else {
-		pid := idBroker.issuePid()
-		wid := idBroker.assignWid(pid)
-		mc.s.Write([]byte(fmt.Sprintf("assn %s %d", pid, wid)))
-		mc.s.Set("pid", pid)
-		sendHand(mc.s, mc.e.GameState.Players[wid].Cards)
-	}
-	continueUntilRealPlayer(mc.m, mc.e)
-	mc.m.Broadcast([]byte(mc.e.GameState.ToIIP()))
-}
-
+// (r)e(q)uest (id): Handle client requesting an id
 func rqid(mc *MessageContext) {
-	pid := idBroker.issuePid()
-	wid := idBroker.assignWid(pid)
-	mc.s.Write([]byte(fmt.Sprintf("assn %s %d", pid, wid)))
-	mc.s.Set("pid", pid)
+	idbytes, _ := uuid.Must(uuid.NewV4()).MarshalText()
+	id := string(idbytes)
 
-	continueUntilRealPlayer(mc.m, mc.e)
-	mc.m.Broadcast([]byte(mc.e.GameState.ToIIP()))
-	sendHand(mc.s, mc.e.GameState.Players[wid].Cards)
-}
-
-func sendHand(s *melody.Session, cards []engine.Card) {
-	var shand strings.Builder
-	shand.WriteString("hand ")
-	shand.WriteString(engine.CardlistToIIP(cards))
-	s.Write([]byte(shand.String()))
-}
-
-func broadcastChallengeResult(m *melody.Melody, cr *engine.ChallengeResult) {
-	m.Broadcast([]byte(cr.ToIIP()))
-}
-
-func privateBroadcastHand(m *melody.Melody, g *engine.GameState) {
-	for _, p := range g.Players {
-		cards := p.Cards
-		var shand strings.Builder
-		shand.WriteString("hand ")
-		shand.WriteString(engine.CardlistToIIP(cards))
-		m.BroadcastFilter([]byte(shand.String()), func(s *melody.Session) bool {
-			sessionPid, isSession := s.Get("pid")
-			brokerPid, isInLobby := idBroker.getPid(p.Id)
-			return isSession && isInLobby && brokerPid == sessionPid
-		})
+	for _, ok := users[id]; ok; {
+		idbytes, _ = uuid.Must(uuid.NewV4()).MarshalText()
+		id = string(idbytes)
 	}
+
+	asid(mc.s, id)
+	mc.s.Set("id", id)
 }
 
-// func makePidCheck(pid string) {
-// 	return func
-// }
+// (as)sign (id): Assign id to a client
+func asid(s *melody.Session, id string) {
+	s.Write([]byte(fmt.Sprintf("asid %s", id)))
+}
 
-func continueUntilRealPlayer(m *melody.Melody, e *engine.Engine) {
+// I (am) (id): Handle client declaring their id
+func amid(mc *MessageContext) {
+	id := mc.cmdargs[0]
+	mc.s.Set("id", id)
+}
 
-	for {
-		// a,b :=
-		// fmt.Printf("%d %s %t\n", e.GameState.CurrentPlayerId, widToPid[e.GameState.CurrentPlayerId], ok)
-		if e.Winner() != nil {
-			m.Broadcast([]byte(fmt.Sprintf("winp %d %d %d", e.Winner().Id, e.Winner().CurrentCartridge, e.Winner().LiveCartridge)))
-			break
-		}
-		_, ok := idBroker.getPid(e.GameState.CurrentPlayerId)
-		if ok {
-			m.Broadcast([]byte(e.GameState.ToIIP()))
-			break
-		}
-		CurrentPlayer := e.GameState.CurrentPlayer()
-		PreviousPlayer := e.GameState.PreviousPlayer()
-		bot := engine.Bot{e.GameState.CurrentPlayerId}
-		t := bot.NextMove(e.GameState.TurnHistory, len(e.GameState.CardsLastPlayed), CurrentPlayer.Cards, e.GameState.TableCard, PreviousPlayer.CurrentCartridge)
-		if t.Action == engine.Challenge {
-			fmt.Printf("Player %d challenges player %d.\n", CurrentPlayer.Id, PreviousPlayer.Id)
-			cr, e := e.Play(t)
-			broadcastChallengeResult(m, cr)
-			if e != nil {
-				fmt.Println(e.Error())
-				continue
-			}
-		} else {
-			fmt.Printf("Player %d claims %d %ss.\n", CurrentPlayer.Id, len(t.Cards), e.GameState.TableCard.String())
-		}
-		e.Play(t)
-		m.Broadcast([]byte(e.GameState.ToIIP()))
+// Handle client declaring their username
+func name(mc *MessageContext) {
+	username := mc.cmdargs[0]
+
+	webid, ok := mc.s.Get("id")
+	if !ok {
+		// TODO: Handle error
+	}
+	user := new(User)
+	user.username = username
+	user.webid = webid.(string)
+	users[webid.(string)] = user
+	fmt.Println("User " + username + " has joined the server\n")
+	fmt.Println("All users: \n")
+	for id, user := range users {
+		fmt.Printf("User ID: %s, Username: %s\n", id, user.username)
 	}
 }
