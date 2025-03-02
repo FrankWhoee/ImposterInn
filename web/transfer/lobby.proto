@@ -11,7 +11,7 @@ message lbcrResponse {
     int32 lobbyid = 1;
 }
 
-message lbjnDTO {
+message lbjnRequest {
     string webid = 1;
     int32 lobbyid = 2;
 }

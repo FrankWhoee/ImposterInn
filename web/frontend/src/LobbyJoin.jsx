@@ -19,6 +19,12 @@ function LobbyJoin({ ws, setPage }) {
     
   }
 
+  function handleCreateLobby() {
+    
+  }
+
+
+
   return (
     <>
       <h1>Liar's Fortress</h1>

@@ -5,13 +5,13 @@ import (
 	"io"
 	"math/rand/v2"
 	"net/http"
-	"strconv"
 
 	// "strconv"
 	"strings"
 
 	"github.com/gofrs/uuid/v5"
-	"github.com/golang/protobuf/proto"
+	// "github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/FrankWhoee/ImposterInn/engine"
 	"github.com/FrankWhoee/ImposterInn/web/dto/transfer"
@@ -23,7 +23,7 @@ var idBroker *IdBroker
 
 type Lobby struct {
 	id     int
-	users  []User
+	users  []*User
 	status LobbyStatus
 }
 
@@ -63,7 +63,6 @@ func main() {
 	fmt.Println(engine.CardListToString(e.GameState.CurrentPlayer().Cards))
 
 	cmdToFn := make(map[string]func(*MessageContext))
-	cmdToFn["lbcr"] = lbcr
 	cmdToFn["rqid"] = rqid
 	cmdToFn["amid"] = amid
 	cmdToFn["name"] = name
@@ -92,22 +91,46 @@ func main() {
 	})
 
 	http.HandleFunc("POST /lbcr", func(w http.ResponseWriter, r *http.Request) {
-		request := &transfer.LbcrDTO{}
-		reqbody,_ := io.ReadAll(r.Body)
-		proto.Unmarshal(reqbody, request)
+		request := &transfer.LbcrRequest{}
+		reqbody, _ := io.ReadAll(r.Body)
+		protojson.Unmarshal(reqbody, request)
+
+		user, userfound := users[request.Webid]
+
+		if !userfound {
+			http.Error(w, "User not found.", http.StatusUnauthorized)
+			return
+		}
 
 		newLobbyId := 111111 + rand.IntN(888888)
 		lobbies[newLobbyId] = new(Lobby)
 		lobbies[newLobbyId].id = newLobbyId
-		lobbies[newLobbyId].users = make([]User, 0)
+		lobbies[newLobbyId].users = make([]*User, 0)
 		lobbies[newLobbyId].status = Waiting
 
-		lobbies[newLobbyId].users = append(lobbies[newLobbyId].users, *users[request.Webid])
+		lobbies[newLobbyId].users = append(lobbies[newLobbyId].users, user)
 
-		response := &transfer.LbcrResponseDTO{
+		response := &transfer.LbcrResponse{
 			Lobbyid: int32(newLobbyId),
 		}
-		w.Write([]byte(fmt.Sprintf("lbid %d", newLobbyId)))
+
+		responsebytes := protojson.Format(response)
+		w.Write([]byte(responsebytes))
+	})
+
+	http.HandleFunc("POST /lbjn", func(w http.ResponseWriter, r *http.Request) {
+		request := &transfer.LbjnRequest{}
+		reqbody, _ := io.ReadAll(r.Body)
+		protojson.Unmarshal(reqbody, request)
+
+		lobbyid := int(request.Lobbyid)
+
+		if len(lobbies[lobbyid].users) >= 4 {
+			http.Error(w, "Max lobby size reached. Try another lobby.", http.StatusConflict)
+			return
+		}
+
+		lobbies[lobbyid].users = append(lobbies[lobbyid].users, users[request.Webid])
 	})
 
 	m.HandleConnect(func(s *melody.Session) {
@@ -145,32 +168,6 @@ func main() {
 	})
 
 	http.ListenAndServe(":5000", nil)
-}
-
-// (l)o(b)by (cr)eate: Handle client creating a new lobby
-func lbcr(mc *MessageContext) {
-	newLobbyId := 111111 + rand.IntN(888888)
-	lobbies[newLobbyId] = new(Lobby)
-	lobbies[newLobbyId].id = newLobbyId
-	lobbies[newLobbyId].users = make([]User, 0)
-	lobbies[newLobbyId].status = Waiting
-
-	lobbies[newLobbyId].users = append(lobbies[newLobbyId].users, *mc.loginContext.user)
-
-	mc.s.Write([]byte(fmt.Sprintf("lbid %d", newLobbyId)))
-}
-
-// (l)o(b)by (j)o(i)n: Handle client joining a lobby
-func lbjn(mc *MessageContext) {
-	lobbyId, atoierr := strconv.Atoi(mc.cmdargs[0])
-	if atoierr != nil {
-		return
-	}
-	lobby, ok := lobbies[lobbyId]
-	if !ok {
-		return
-	}
-	lobby.users = append(lobby.users, *mc.loginContext.user)
 }
 
 // (r)e(q)uest (id): Handle client requesting an id
