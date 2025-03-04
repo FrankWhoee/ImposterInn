@@ -4,14 +4,28 @@ package transfer;
 option go_package = "dto/transfer";
 
 message lbcrRequest {
-    string webid = 1;
+  string webId = 1;
 }
 
 message lbcrResponse {
-    int32 lobbyid = 1;
+  int32 lobbyId = 1;
 }
 
 message lbjnRequest {
-    string webid = 1;
-    int32 lobbyid = 2;
+  string webId = 1;
+  int32 lobbyId = 2;
+}
+
+message lbjnResponse {
+  int32 lobbyId = 2;
+}
+
+message errorResponse {
+    string message = 1;
+}
+
+message lbin {
+  string command = "lbin";
+  int32 lobbyId = 1;
+  repeated string players = 2;
 }

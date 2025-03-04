@@ -1,1 +1,1 @@
-protoc -I=transfer --go_out=. $(find  -iname "*.proto")
+protoc -I=transfer --go_out=. --js_out=frontend/src/dto $(find  -iname "*.proto")

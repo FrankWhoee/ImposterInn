@@ -7,20 +7,43 @@ import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
-function LobbyJoin({ ws, setPage }) {
-  
+function LobbyJoin({ ws, setPage, setLobbyId, webId }) {
+
+  let [error, setError] = useState(false)
+  let [errorMessage, setErrorMessage] = useState("")
+
   function goBack() {
     console.log("go back")
     setPage("username")
   }
 
-  function handleJoinLobby() {
-    console.log("join lobby")
-    
+  async function handleJoinLobby() {
+    let lobbyId = document.getElementById("lobbyId").value
+    let response = await fetch("/lbjn", { method: "POST", body: JSON.stringify({ webId: webId, lobbyId: lobbyId }) })
+    if (!response.ok) {
+      let data = await response.json()
+      setError(true)
+      setErrorMessage(data.message)
+    } else {
+      let data = await response.json()
+      localStorage.setItem("lobbyId", data.lobbyId)
+      setLobbyId(data.lobbyId)
+      setPage("lobby")
+    }
   }
 
-  function handleCreateLobby() {
-    
+  async function handleCreateLobby() {
+    let response = await fetch("/lbcr", { method: "POST", body: JSON.stringify({ webId: webId }) })
+    if (!response.ok) {
+      let data = await response.json()
+      setError(true)
+      setErrorMessage(data.message)
+    } else {
+      let data = await response.json()
+      localStorage.setItem("lobbyId", data.lobbyId)
+      setLobbyId(data.lobbyId)
+      setPage("lobby") 
+    }
   }
 
 
@@ -30,13 +53,13 @@ function LobbyJoin({ ws, setPage }) {
       <h1>Liar's Fortress</h1>
 
       <Stack spacing={2} alignItems="center">
-        <TextField id="outlined-basic" label="Lobby ID" variant="outlined" />
+        <TextField id="lobbyId" label="Lobby ID" variant="outlined" error={error} helperText={errorMessage}/>
         <Stack spacing={2} direction="row" alignItems="justify">
-          <Button variant="contained">Join Lobby</Button>
-          <Button variant="contained">Create Lobby</Button>
+          <Button variant="contained" onClick={handleJoinLobby}>Join Lobby</Button>
+          <Button variant="contained" onClick={handleCreateLobby}>Create Lobby</Button>
         </Stack>
         <Button variant="contained" onClick={goBack}>
-          <ArrowBackIcon/>
+          <ArrowBackIcon />
         </Button>
       </Stack>
 

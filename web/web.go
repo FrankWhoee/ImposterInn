@@ -5,6 +5,7 @@ import (
 	"io"
 	"math/rand/v2"
 	"net/http"
+	"strconv"
 
 	// "strconv"
 	"strings"
@@ -95,7 +96,7 @@ func main() {
 		reqbody, _ := io.ReadAll(r.Body)
 		protojson.Unmarshal(reqbody, request)
 
-		user, userfound := users[request.Webid]
+		user, userfound := users[request.WebId]
 
 		if !userfound {
 			http.Error(w, "User not found.", http.StatusUnauthorized)
@@ -111,7 +112,7 @@ func main() {
 		lobbies[newLobbyId].users = append(lobbies[newLobbyId].users, user)
 
 		response := &transfer.LbcrResponse{
-			Lobbyid: int32(newLobbyId),
+			LobbyId: int32(newLobbyId),
 		}
 
 		responsebytes := protojson.Format(response)
@@ -123,14 +124,32 @@ func main() {
 		reqbody, _ := io.ReadAll(r.Body)
 		protojson.Unmarshal(reqbody, request)
 
-		lobbyid := int(request.Lobbyid)
+		lobbyid := int(request.LobbyId)
 
-		if len(lobbies[lobbyid].users) >= 4 {
+		lobby, lobbyExists := lobbies[lobbyid]
+
+		if !lobbyExists {
+			response := &transfer.ErrorResponse{
+				Message: "Lobby not found.",
+			}
+			responsebytes := protojson.Format(response)
+			http.Error(w, responsebytes, http.StatusBadRequest)
+			return
+		}
+
+		if len(lobby.users) >= 4 {
 			http.Error(w, "Max lobby size reached. Try another lobby.", http.StatusConflict)
 			return
 		}
 
-		lobbies[lobbyid].users = append(lobbies[lobbyid].users, users[request.Webid])
+		lobby.users = append(lobby.users, users[request.WebId])
+
+		response := &transfer.LbcrResponse{
+			LobbyId: int32(lobbyid),
+		}
+
+		responsebytes := protojson.Format(response)
+		w.Write([]byte(responsebytes))
 	})
 
 	m.HandleConnect(func(s *melody.Session) {
@@ -168,6 +187,34 @@ func main() {
 	})
 
 	http.ListenAndServe(":5000", nil)
+}
+
+func (lobby *Lobby) hasUser(webId string) bool {
+	for _, u := range lobby.users {
+		if u.webid == webId {
+			return true
+		}
+	}
+	return false
+}
+
+// (l)obby (in)fo: Handle client requesting lobby info
+func lbin(mc *MessageContext) {
+	lobbyId, lobbyIdOk := strconv.ParseInt(mc.cmdargs[0])
+	lobby, lobbyOk := lobbies[int(lobbyId)]
+	if lobbyIdOk != nil || !lobbyOk {
+		return
+	}
+	webId, webIdOk := mc.s.Get("id")	
+	if !webIdOk {
+		return
+	}
+	// User is only authorized to see the lobby if they are in the lobby.
+	if lobby.hasUser(webId.(string)) {
+		mc.s.Write([]byte(fmt.Sprintf("lbin %d %d", lobby.id, len(lobby.users))))
+	}
+
+
 }
 
 // (r)e(q)uest (id): Handle client requesting an id

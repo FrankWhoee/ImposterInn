@@ -6,31 +6,44 @@ import TextField from '@mui/material/TextField';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemText from '@mui/material/ListItemText';
+import ListItemAvatar from '@mui/material/ListItemAvatar';
+import Avatar from '@mui/material/Avatar';
 
-function LobbyJoin({ ws, setPage }) {
-  
+function Player({username, userAvatar}) {
+  return (
+    <ListItem>
+      <ListItemAvatar>
+        <Avatar>
+          {userAvatar}
+        </Avatar>
+      </ListItemAvatar>
+      <ListItemText primary={username} />
+    </ListItem>
+  )
+}
+
+function Lobby({ ws, setPage, players}) {
+
   function goBack() {
     console.log("go back")
     setPage("username")
   }
 
+  const playerlist = players.map(player => <Player username={player.username} userAvatar={player.userAvatar} />)
+
   return (
     <>
-      <h1>Liar's Fortress</h1>
-
-      <Stack spacing={2} alignItems="center">
-        <TextField id="outlined-basic" label="Lobby ID" variant="outlined" />
-        <Stack spacing={2} direction="row" alignItems="justify">
-          <Button variant="contained">Join Lobby</Button>
-          <Button variant="contained">Create Lobby</Button>
-        </Stack>
-        <Button variant="contained" onClick={goBack}>
-          <ArrowBackIcon/>
+      <List sx={{ width: '100%', maxWidth: 360, bgcolor: 'background.paper' }}>
+        {playerlist}
+      </List>
+      <Button variant="contained" onClick={goBack}>
+          <ArrowBackIcon />
         </Button>
-      </Stack>
-
     </>
   )
 }
 
-export default LobbyJoin
+export default Lobby
